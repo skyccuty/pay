@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1F2F4D">
+<meta name="description" content="나이스 급여명세서를 월별로 모아 보고 비교하는 개인용 앱">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="급여명세 장부">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; worker-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'self'">
+<title>급여명세 장부</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<a class="skip" href="#main">본문으로 건너뛰기</a>
+<header class="topbar">
+  <a class="brand" href="#/home" aria-label="급여명세 장부 홈">
+    <span class="brand-mark" aria-hidden="true"></span>
+    <span>급여명세 장부</span>
+  </a>
+  <nav class="nav" aria-label="주요 메뉴">
+    <a href="#/home" data-nav="home"><span class="ni ni-home" aria-hidden="true"></span><span>홈</span></a>
+    <a href="#/upload" data-nav="upload"><span class="ni ni-up" aria-hidden="true"></span><span class="lbl-long">명세서 올리기</span><span class="lbl-short">올리기</span></a>
+    <a href="#/month" data-nav="month"><span class="ni ni-month" aria-hidden="true"></span><span>월별 조회</span></a>
+    <a href="#/year" data-nav="year"><span class="ni ni-year" aria-hidden="true"></span><span>연도별 분석</span></a>
+    <a href="#/data" data-nav="data"><span class="ni ni-data" aria-hidden="true"></span><span>데이터 관리</span></a>
+  </nav>
+  <button type="button" class="lock-btn" id="lock-btn" aria-label="지금 잠그기" title="지금 잠그기"><span aria-hidden="true"></span>잠그기</button>
+</header>
+<main id="main" tabindex="-1"></main>
+<div id="modal-root"></div>
+<div id="toast" role="status" aria-live="polite"></div>
+<noscript><p class="noscript">이 앱은 자바스크립트가 켜져 있어야 동작합니다.</p></noscript>
+
+<script src="js/extractors.js"></script>
+<script src="js/parser.js"></script>
+<script src="js/data.js"></script>
+<script src="js/ui-common.js"></script>
+<script src="js/editor.js"></script>
+<script src="js/views.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
