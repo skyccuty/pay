@@ -88,11 +88,12 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .brand-mark::after { top: 10px; right: 8px; }
 .nav {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
-  display: grid; grid-template-columns: repeat(5, 1fr);
+  display: grid; grid-template-columns: repeat(6, 1fr);
   background: var(--surface); border-top: 1px solid var(--line);
   padding-bottom: env(safe-area-inset-bottom);
 }
 .nav a {
+  min-width: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
   min-height: var(--nav-h); color: var(--muted); text-decoration: none; font-size: 12px; text-align: center; line-height: 1.2;
   padding: 4px 2px;
@@ -102,6 +103,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 @media (min-width: 900px) { .lbl-long { display: inline; } .lbl-short { display: none; } }
 @media (prefers-color-scheme: dark) { .nav a[aria-current="page"] { color: #fff; } }
 .nav a[aria-current="page"] .ni { background: var(--net-soft); }
+.ni-cmp { --m: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 20V9h3v11zm5 0V5h3v15zm6 0v-8h3v8zm5 0V7h3v13zM2 3h9v1.6H2zm11 0h9v1.6h-9z'/%3E%3C/svg%3E"); }
 .ni { width: 44px; height: 26px; border-radius: 13px; display: grid; place-items: center; position: relative; }
 .ni::before { content: ""; width: 18px; height: 18px; background: currentColor; -webkit-mask: var(--m) center/contain no-repeat; mask: var(--m) center/contain no-repeat; }
 .ni-home { --m: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 11 12 3l9 8v10h-6v-6H9v6H3z'/%3E%3C/svg%3E"); }
@@ -189,6 +191,22 @@ hr.rule { border: 0; border-top: 1px solid var(--line); margin: 14px 0; }
 .btn.small { min-height: 36px; padding: 0 12px; font-size: 14px; }
 .btn[disabled] { opacity: .45; cursor: not-allowed; }
 .icon-btn { min-width: 44px; padding: 0 10px; }
+
+/* ---------- 연도 비교 ---------- */
+.seg { display: inline-flex; border: 1px solid var(--line-strong); border-radius: 22px; padding: 3px; background: var(--surface-2); }
+.seg-btn { min-height: 38px; padding: 0 16px; border: 0; border-radius: 19px; background: transparent; font-weight: 600; cursor: pointer; color: var(--ink-2); }
+.seg-btn[aria-pressed="true"] { background: var(--brand); color: #fff; }
+@media (prefers-color-scheme: dark) { .seg-btn[aria-pressed="true"] { background: #3B5BB5; } }
+.cmp-years { margin-top: 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (min-width: 640px) { .cmp-years { grid-template-columns: repeat(2, minmax(0, 220px)); } }
+.d-up { color: var(--ink); font-weight: 700; }
+.d-down { color: var(--ink-2); font-weight: 700; }
+.d-zero { color: var(--muted); }
+.cmp-vals { display: block; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; margin-top: 2px; }
+.cmp-vals small, .cmp-d small { font-size: 12px; margin-left: 2px; }
+.cmp-d { text-align: right; }
+.cmp-d small { display: block; font-weight: 600; }
+h3.grp-pay { color: var(--pay); } h3.grp-tax { color: var(--tax); } h3.grp-ded { color: var(--ded); }
 
 /* ---------- 봉투 막대: 급여총액이 어디로 나뉘는지 ---------- */
 .payslip-hero { padding: 20px 18px 18px; }

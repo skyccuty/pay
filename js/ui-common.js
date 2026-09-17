@@ -96,7 +96,7 @@
           callbacks: {
             label: (ctx) => {
               const v = ctx.parsed.y;
-              const unit = (config.unit || '원');
+              const unit = (config.unit != null ? config.unit : '원');
               return `${ctx.dataset.label}: ${v == null ? '자료 없음' : U.fmt(v) + unit}`;
             },
           },
@@ -107,7 +107,7 @@
         y: {
           grid: { color: line },
           ticks: {
-            callback: (v) => (config.unit && config.unit !== '원') ? v
+            callback: (v) => (config.unit != null && config.unit !== '원') ? v
               : (Math.abs(v) >= 10000 ? `${U.fmt(v / 10000)}만` : U.fmt(v)),
           },
         },

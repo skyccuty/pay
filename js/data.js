@@ -329,6 +329,110 @@
     return rows;
   };
 
+  /* ---------- 연도 간 비교 ---------- */
+  const FIELDS = ['paymentTotal', 'taxTotal', 'deductionTotal', 'netPay'];
+  A.FIELD_LABEL = { paymentTotal: '급여총액', taxTotal: '세금총액', deductionTotal: '공제총액', netPay: '실수령액' };
+  A.monthsOf = (records, year) => records.filter((r) => r.year === year).map((r) => r.month).sort((a, b) => a - b);
+  const pick = (records, year, months) => records.filter((r) => r.year === year && (!months || months.includes(r.month)));
+  const sumField = (list, f) => {
+    if (!list.length) return null;
+    if (list.some((r) => r[f] == null)) return null; // 비어 있는 달이 섞이면 합계를 만들지 않음
+    return list.reduce((s, r) => s + r[f], 0);
+  };
+  const sumKey = (list, key) => {
+    const vals = list.map((r) => A.value(r, key)).filter((v) => v != null);
+    return vals.length ? vals.reduce((a, b) => a + b, 0) : null;
+  };
+  A.delta = (a, b) => {
+    if (a == null || b == null) return { diff: null, pct: null };
+    return { diff: b - a, pct: a === 0 ? null : ((b - a) / Math.abs(a)) * 100 };
+  };
+  /**
+   * 두 연도 비교. basis: 'same'(두 해 모두 기록이 있는 달만) | 'annual'(저장된 달 전부)
+   * base = 비교 대상(이전), target = 기준 연도
+   */
+  A.comparePair = (records, base, target, basis) => {
+    const mBase = A.monthsOf(records, base), mTarget = A.monthsOf(records, target);
+    const common = mBase.filter((m) => mTarget.includes(m));
+    const use = basis === 'same' ? common : null;
+    const la = pick(records, base, use), lb = pick(records, target, use);
+    const out = {
+      base, target, basis, common,
+      monthsBase: use ? common : mBase, monthsTarget: use ? common : mTarget,
+      mismatch: basis === 'annual' && (mBase.length !== mTarget.length || mBase.some((m, i) => m !== mTarget[i])),
+      empty: basis === 'same' ? !common.length : !(la.length && lb.length),
+      rows: [],
+    };
+    FIELDS.forEach((f) => {
+      const a = sumField(la, f), b = sumField(lb, f);
+      out.rows.push(Object.assign({ key: f, label: A.FIELD_LABEL[f], a, b }, A.delta(a, b)));
+    });
+    const avg = (list, f) => { const v = sumField(list, f); return v == null ? null : Math.round(v / list.length); };
+    out.avgNet = Object.assign({ a: avg(la, 'netPay'), b: avg(lb, 'netPay') }, A.delta(avg(la, 'netPay'), avg(lb, 'netPay')));
+    // 항목별
+    const cat = A.catalog(la.concat(lb));
+    out.items = {};
+    Object.keys(cat).forEach((g) => {
+      out.items[g] = cat[g].map((name) => {
+        const key = `${g}:${name}`;
+        const a = sumKey(la, key), b = sumKey(lb, key);
+        const inA = la.some((r) => (r[g] || []).some((i) => i.name === name));
+        const inB = lb.some((r) => (r[g] || []).some((i) => i.name === name));
+        return Object.assign({ name, a, b, inA, inB, monthsA: la.filter((r) => A.value(r, key) != null).length, monthsB: lb.filter((r) => A.value(r, key) != null).length }, A.delta(inA ? a : null, inB ? b : null));
+      });
+    });
+    return out;
+  };
+  /** 연속 연도(직전 기록 연도) 대비 개요 */
+  A.yearOverview = (records, basis) => {
+    const ys = A.years(records);
+    return ys.map((y, i) => {
+      const s = A.yearSummary(records, y);
+      const row = { year: y, months: s.months, net: s.netPay, pay: s.paymentTotal, prev: i ? ys[i - 1] : null };
+      if (i) {
+        const c = A.comparePair(records, ys[i - 1], y, basis);
+        const n = c.rows.find((r) => r.key === 'netPay');
+        const p = c.rows.find((r) => r.key === 'paymentTotal');
+        Object.assign(row, { cmpMonths: c.basis === 'same' ? c.common.length : null, empty: c.empty, mismatch: c.mismatch, netDelta: n, payDelta: p, netA: n.a, netB: n.b });
+      }
+      return row;
+    });
+  };
+  /** 부담률: (세금+공제)/급여총액. basis 'same'이면 모든 대상 연도에 공통으로 있는 달만 */
+  A.burden = (records, years, basis) => {
+    let months = null;
+    if (basis === 'same') {
+      months = [...Array(12)].map((_, i) => i + 1).filter((m) => years.every((y) => records.some((r) => r.year === y && r.month === m)));
+    }
+    const rows = years.map((y) => {
+      const list = pick(records, y, months);
+      const p = sumField(list, 'paymentTotal'), t = sumField(list, 'taxTotal'), d = sumField(list, 'deductionTotal');
+      const r = (v) => (p && v != null ? (v / p) * 100 : null);
+      return { year: y, months: list.length, pay: p, tax: t, ded: d, taxRate: r(t), dedRate: r(d), totalRate: t != null && d != null ? r(t + d) : null };
+    });
+    return { months, rows };
+  };
+  /** 같은 기간 누적: 1월~upto월, 두 해 모두 기록이 있는 달만 누적 */
+  A.cumulative = (records, base, target, upto, field) => {
+    const mBase = A.monthsOf(records, base), mTarget = A.monthsOf(records, target);
+    const months = [];
+    for (let m = 1; m <= upto; m++) if (mBase.includes(m) && mTarget.includes(m)) months.push(m);
+    const missing = [];
+    for (let m = 1; m <= upto; m++) if (!months.includes(m)) missing.push(m);
+    const byId = new Map(records.map((r) => [r.id, r]));
+    let ca = 0, cb = 0, broken = false;
+    const series = [];
+    for (let m = 1; m <= upto; m++) {
+      if (months.includes(m)) {
+        const ra = byId.get(U.ym(base, m)), rb = byId.get(U.ym(target, m));
+        if (ra[field] == null || rb[field] == null) broken = true;
+        ca += ra[field] || 0; cb += rb[field] || 0;
+        series.push({ month: m, a: ca, b: cb });
+      } else series.push({ month: m, a: null, b: null });
+    }
+    return { months, missing, broken, series, total: Object.assign({ a: months.length ? ca : null, b: months.length ? cb : null }, A.delta(months.length ? ca : null, months.length ? cb : null)) };
+  };
+
   /* ================= backup / restore ================= */
   const B = (PS.backup = {});
   B.FORMAT = 'payslip-ledger-backup';

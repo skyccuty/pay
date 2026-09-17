@@ -677,6 +677,211 @@
     });
   };
 
+  /* ---------- 연도 비교 ---------- */
+  const cmpState = { basis: 'same', base: null, target: null, monthKey: 'total:netPay', cumField: 'netPay', upto: null };
+  const pct = (v) => (v == null ? '—' : `${v > 0 ? '+' : ''}${v.toFixed(1)}%`);
+  const signed = (v) => (v == null ? '—' : `${v > 0 ? '▲ ' : v < 0 ? '▼ ' : ''}${U.fmt(Math.abs(v))}`);
+  const dcls = (v) => (v == null || v === 0 ? 'd-zero' : v > 0 ? 'd-up' : 'd-down');
+  const monthList = (ms) => (ms && ms.length ? ms.map((m) => `${m}월`).join(', ') : '없음');
+
+  V.compare = async (params) => {
+    const recs = await S.all();
+    const years = A.years(recs);
+    if (years.length < 2) {
+      main().innerHTML = `<div class="page-head"><div><h1>연도 비교</h1></div></div>
+        <section class="block empty-state"><h2>비교하려면 두 해 이상의 기록이 필요합니다</h2>
+        <p>지금은 ${years.length ? `${years[0]}년 기록만 있습니다` : '저장된 기록이 없습니다'}. 나이스에서 지난해 급여명세서를 내려받아 올리면 연도끼리 비교할 수 있습니다.</p>
+        <a class="btn primary" href="#/upload">명세서 올리기</a></section>`;
+      return;
+    }
+    if (params[0] === 'same' || params[0] === 'annual') cmpState.basis = params[0];
+    if (!years.includes(cmpState.target)) cmpState.target = years[years.length - 1];
+    if (!years.includes(cmpState.base) || cmpState.base === cmpState.target) {
+      const earlier = years.filter((y) => y < cmpState.target);
+      cmpState.base = earlier.length ? earlier[earlier.length - 1] : years.find((y) => y !== cmpState.target);
+    }
+    const { basis, base, target } = cmpState;
+    const c = A.comparePair(recs, base, target, basis);
+    const ov = A.yearOverview(recs, basis);
+    const bur = A.burden(recs, years, basis);
+    const tMonths = A.monthsOf(recs, target);
+    if (!cmpState.upto || cmpState.upto > 12) cmpState.upto = tMonths[tMonths.length - 1] || 12;
+    const cum = A.cumulative(recs, base, target, cmpState.upto, cmpState.cumField);
+    const basisNote = basis === 'same'
+      ? `두 해 모두 기록이 있는 달만 비교합니다. 비교한 달: <strong>${monthList(c.common)}</strong>`
+      : `각 해에 저장된 모든 달을 합산합니다. ${base}년 ${c.monthsBase.length}개월 · ${target}년 ${c.monthsTarget.length}개월`;
+    const yOpt = (sel, except) => years.filter((y) => y !== except).map((y) => `<option value="${y}" ${y === sel ? 'selected' : ''}>${y}년</option>`).join('');
+
+    main().innerHTML = `
+      <div class="page-head"><div><h1>연도 비교</h1><p>두 해의 급여를 나란히 놓고 달라진 점을 봅니다.</p></div></div>
+      <div class="stack">
+        <section class="block cmp-controls">
+          <div class="seg" role="group" aria-label="비교 기준">
+            <button type="button" class="seg-btn" data-basis="same" aria-pressed="${basis === 'same'}">같은 달끼리</button>
+            <button type="button" class="seg-btn" data-basis="annual" aria-pressed="${basis === 'annual'}">연간 합계</button>
+          </div>
+          <div class="form-grid cmp-years">
+            <label class="f"><span>기준 연도</span><select class="input" id="cmp-target">${yOpt(target)}</select></label>
+            <label class="f"><span>비교 연도</span><select class="input" id="cmp-base">${yOpt(base, target)}</select></label>
+          </div>
+          <p class="small" style="margin-top:10px">${basisNote}</p>
+          ${c.mismatch ? `<div class="notice warn" style="margin-top:10px">⚠ 두 해의 기록 개월 수(또는 달)가 달라 연간 합계를 그대로 비교하기 어렵습니다. 공정한 비교는 <strong>같은 달끼리</strong> 기준을 보세요.</div>` : ''}
+          ${c.empty ? `<div class="notice warn" style="margin-top:10px">⚠ ${basis === 'same' ? `${base}년과 ${target}년에 함께 기록된 달이 없어 비교할 수 없습니다.` : '비교할 기록이 없습니다.'}</div>` : ''}
+        </section>
+
+        <section class="block">
+          <div class="block-head"><h2>연도 간 증감</h2><span class="small muted">${base}년 → ${target}년</span></div>
+          <div class="table-wrap"><table class="grid cards">
+            <thead><tr><th>구분</th><th class="num">${base}년</th><th class="num">${target}년</th><th class="num">증감액</th><th class="num">증감률</th></tr></thead>
+            <tbody>${c.rows.map((r) => `<tr><td class="head-cell">${r.label}</td>
+              <td class="num" data-l="${base}년">${r.a == null ? '—' : U.fmt(r.a)}</td>
+              <td class="num" data-l="${target}년">${r.b == null ? '—' : U.fmt(r.b)}</td>
+              <td class="num ${dcls(r.diff)}" data-l="증감액">${signed(r.diff)}</td>
+              <td class="num ${dcls(r.diff)}" data-l="증감률">${pct(r.pct)}</td></tr>`).join('')}
+              <tr><td class="head-cell">월평균 실수령액</td>
+              <td class="num" data-l="${base}년">${c.avgNet.a == null ? '—' : U.fmt(c.avgNet.a)}</td>
+              <td class="num" data-l="${target}년">${c.avgNet.b == null ? '—' : U.fmt(c.avgNet.b)}</td>
+              <td class="num ${dcls(c.avgNet.diff)}" data-l="증감액">${signed(c.avgNet.diff)}</td>
+              <td class="num ${dcls(c.avgNet.diff)}" data-l="증감률">${pct(c.avgNet.pct)}</td></tr>
+            </tbody></table></div>
+          <p class="chart-note">▲는 늘어남, ▼는 줄어듦입니다. 세금·공제가 늘어난 것은 실수령에 불리한 변화입니다. 합계가 비어 있는 달이 섞이면 '—'로 표시합니다.</p>
+          <h3 style="margin:18px 0 6px">전체 연도 실수령액 추이</h3>
+          <div class="table-wrap"><table class="grid cards">
+            <thead><tr><th>연도</th><th class="num">기록</th><th class="num">${basis === 'same' ? '비교한 달' : '실수령액 합계'}</th><th class="num">직전 연도 대비</th><th class="num">증감률</th></tr></thead>
+            <tbody>${ov.map((o) => `<tr><td class="head-cell">${o.year}년</td>
+              <td class="num" data-l="기록">${o.months}개월</td>
+              <td class="num" data-l="${basis === 'same' ? '비교한 달' : '실수령액 합계'}">${basis === 'same' ? (o.prev ? `${o.cmpMonths}개월 (${o.prev}년과)` : '—') : U.fmt(o.net)}</td>
+              <td class="num ${o.prev ? dcls(o.netDelta.diff) : ''}" data-l="직전 연도 대비">${o.prev ? `${signed(o.netDelta.diff)}${o.mismatch ? ' ⚠' : ''}` : '—'}</td>
+              <td class="num ${o.prev ? dcls(o.netDelta.diff) : ''}" data-l="증감률">${o.prev ? pct(o.netDelta.pct) : '—'}</td></tr>`).join('')}</tbody>
+          </table></div>
+          ${basis === 'annual' && ov.some((o) => o.mismatch) ? '<p class="chart-note">⚠ 표시는 두 해의 기록 개월 수가 달라 단순 비교가 어려운 경우입니다.</p>' : ''}
+        </section>
+
+        <section class="block">
+          <div class="block-head"><h2>같은 달 연도 비교</h2></div>
+          <label class="f"><span>볼 항목</span><select class="input" id="cmp-month-metric"></select></label>
+          <div class="chart-box" style="margin-top:12px"><canvas id="c-samemonth" role="img" aria-label="월별로 연도를 겹쳐 비교한 그래프"></canvas></div>
+          <p class="chart-note">연도마다 선 하나입니다. 끊긴 곳은 명세서가 없거나 그 달에 해당 항목이 없는 달입니다. 최근 5개 연도까지 표시합니다.</p>
+        </section>
+
+        <section class="block">
+          <div class="block-head"><h2>항목별 연간 비교</h2><span class="small muted">${base}년 → ${target}년</span></div>
+          ${c.empty ? '<p class="muted">비교할 기록이 없습니다.</p>' : ['payments', 'taxes', 'deductions'].map((g) => {
+            const list = c.items[g];
+            if (!list.length) return '';
+            const cls = { payments: 'pay', taxes: 'tax', deductions: 'ded' }[g];
+            const val = (inX, v, mX, mAll) => (inX ? `${U.fmt(v)}${mX !== mAll ? `<small>(${mX}개월)</small>` : ''}` : '<span class="muted">없음</span>');
+            return `<h3 class="grp-${cls}" style="margin:14px 0 2px">${A.GROUP_LABEL[g]}</h3>
+              <ul class="lines cmp-lines">${list.map((it) => `<li class="line"><div class="line-main">
+                <span class="line-name">${esc(it.name)}${!it.inA ? '<span class="tag file">신규</span>' : ''}${!it.inB ? '<span class="tag file">없어짐</span>' : ''}
+                  <span class="cmp-vals">${base} ${val(it.inA, it.a, it.monthsA, c.monthsBase.length)} → ${target} ${val(it.inB, it.b, it.monthsB, c.monthsTarget.length)}</span></span>
+                <span class="line-amt cmp-d ${dcls(it.diff)}">${signed(it.diff)}${it.diff == null ? "" : `<small>${pct(it.pct)}</small>`}</span>
+              </div></li>`).join('')}</ul>`;
+          }).join('')}
+          <p class="chart-note">괄호 안 개월 수는 그 항목이 실제로 있었던 달의 수입니다(명절휴가비처럼 특정 달에만 나오는 항목).</p>
+        </section>
+
+        <section class="block">
+          <div class="block-head"><h2>세금·공제 부담률 추이</h2><span class="small muted">급여총액 대비</span></div>
+          ${basis === 'same' ? `<p class="small">모든 연도에 공통으로 기록된 달만 사용: <strong>${monthList(bur.months)}</strong></p>` : '<p class="small">각 해에 저장된 모든 달을 사용합니다. 비율이라 개월 수 차이의 영향은 작지만, 명절휴가비가 있는 달이 빠진 해는 비율이 달라질 수 있습니다.</p>'}
+          ${basis === 'same' && !bur.months.length ? '<div class="notice warn" style="margin-top:10px">⚠ 모든 연도에 공통으로 기록된 달이 없어 이 기준으로는 계산할 수 없습니다. 연간 합계 기준을 이용하세요.</div>' : `
+          <div class="chart-box" style="margin-top:12px"><canvas id="c-burden" role="img" aria-label="연도별 세금과 공제 부담률 그래프"></canvas></div>
+          <div class="table-wrap" style="margin-top:12px"><table class="grid cards">
+            <thead><tr><th>연도</th><th class="num">개월</th><th class="num">세금 비율</th><th class="num">공제 비율</th><th class="num">세금+공제</th></tr></thead>
+            <tbody>${bur.rows.map((r) => `<tr><td class="head-cell">${r.year}년</td><td class="num" data-l="개월">${r.months}</td>
+              <td class="num c-tax" data-l="세금 비율">${r.taxRate == null ? '—' : r.taxRate.toFixed(1) + '%'}</td>
+              <td class="num c-ded" data-l="공제 비율">${r.dedRate == null ? '—' : r.dedRate.toFixed(1) + '%'}</td>
+              <td class="num" data-l="세금+공제"><strong>${r.totalRate == null ? '—' : r.totalRate.toFixed(1) + '%'}</strong></td></tr>`).join('')}</tbody>
+          </table></div>`}
+        </section>
+
+        <section class="block">
+          <div class="block-head"><h2>같은 기간 누적 비교</h2><span class="small muted">${base}년 vs ${target}년</span></div>
+          <div class="form-grid">
+            <label class="f"><span>항목</span><select class="input" id="cum-field">
+              ${['netPay', 'paymentTotal', 'taxTotal', 'deductionTotal'].map((f) => `<option value="${f}" ${f === cmpState.cumField ? 'selected' : ''}>${A.FIELD_LABEL[f]}</option>`).join('')}</select></label>
+            <label class="f"><span>기간</span><select class="input" id="cum-upto">
+              ${Array.from({ length: 12 }, (_, i) => i + 1).map((m) => `<option value="${m}" ${m === cmpState.upto ? 'selected' : ''}>1월~${m}월</option>`).join('')}</select></label>
+          </div>
+          <div class="split-legend" style="margin-top:14px">
+            <div class="leg" style="--c:var(--line-strong)"><span class="k">${base}년 누적</span><span class="v">${UI.won(cum.total.a)}</span></div>
+            <div class="leg net"><span class="k">${target}년 누적</span><span class="v">${UI.won(cum.total.b)}</span></div>
+            <div class="leg" style="--c:var(--ink-2)"><span class="k">차이</span><span class="v ${dcls(cum.total.diff)}">${signed(cum.total.diff)}</span></div>
+            <div class="leg" style="--c:var(--ink-2)"><span class="k">증감률</span><span class="v ${dcls(cum.total.diff)}">${pct(cum.total.pct)}</span></div>
+          </div>
+          <p class="small" style="margin-top:10px">누적에 넣은 달: <strong>${monthList(cum.months)}</strong>${cum.missing.length ? ` · 한쪽이라도 기록이 없어 뺀 달: ${monthList(cum.missing)}` : ''}</p>
+          ${cum.broken ? '<p class="small" style="color:var(--warn)">⚠ 합계가 비어 있는 달이 있어 그 달은 0으로 더했습니다. 해당 달 기록을 확인해 주세요.</p>' : ''}
+          ${cum.months.length ? '<div class="chart-box" style="margin-top:12px"><canvas id="c-cum" role="img" aria-label="같은 기간 누적 비교 그래프"></canvas></div>' : '<div class="notice warn" style="margin-top:10px">⚠ 이 기간에 두 해 모두 기록된 달이 없습니다.</div>'}
+        </section>
+      </div>`;
+
+    UI.$$('[data-basis]').forEach((b2) => b2.onclick = () => { cmpState.basis = b2.dataset.basis; V.compare([]); });
+    document.getElementById('cmp-target').onchange = (e) => { cmpState.target = Number(e.target.value); cmpState.base = null; cmpState.upto = null; V.compare([]); };
+    document.getElementById('cmp-base').onchange = (e) => { cmpState.base = Number(e.target.value); V.compare([]); };
+    document.getElementById('cum-field').onchange = (e) => { cmpState.cumField = e.target.value; V.compare([]); };
+    document.getElementById('cum-upto').onchange = (e) => { cmpState.upto = Number(e.target.value); V.compare([]); };
+
+    const palette = [UI.css('--net'), UI.css('--pay'), UI.css('--tax'), UI.css('--ded'), UI.css('--muted')];
+    const recentYears = years.slice(-5).reverse();
+    const monthLabels = Array.from({ length: 12 }, (_, i) => `${i + 1}월`);
+    const sel = document.getElementById('cmp-month-metric');
+    const keys = new Set(A.TOTALS.map((t) => t.key));
+    const cat = A.catalog(recs);
+    Object.keys(cat).forEach((g) => cat[g].forEach((n) => keys.add(`${g}:${n}`)));
+    if (!keys.has(cmpState.monthKey)) cmpState.monthKey = 'total:netPay';
+    sel.innerHTML = UI.metricOptions(recs, cmpState.monthKey);
+    const drawSame = () => {
+      cmpState.monthKey = sel.value;
+      const byId = new Map(recs.map((r) => [r.id, r]));
+      UI.chart(document.getElementById('c-samemonth'), {
+        type: 'line',
+        data: {
+          labels: monthLabels,
+          datasets: recentYears.map((y, i) => ({
+            label: `${y}년`,
+            data: monthLabels.map((_, m) => A.value(byId.get(U.ym(y, m + 1)), sel.value)),
+            borderColor: palette[i], backgroundColor: palette[i],
+            borderWidth: i === 0 ? 3 : 2, borderDash: i === 0 ? [] : [5, 4], pointRadius: 4, spanGaps: false, tension: 0,
+          })),
+        },
+      });
+    };
+    sel.onchange = drawSame;
+    drawSame();
+
+    const cb = document.getElementById('c-burden');
+    if (cb) {
+      UI.chart(cb, {
+        type: 'line', unit: '%',
+        data: {
+          labels: bur.rows.map((r) => `${r.year}년`),
+          datasets: [
+            { label: '세금+공제', data: bur.rows.map((r) => r.totalRate), borderColor: UI.css('--ink-2'), backgroundColor: UI.css('--ink-2'), borderWidth: 3, pointRadius: 4 },
+            { label: '공제', data: bur.rows.map((r) => r.dedRate), borderColor: UI.css('--ded'), backgroundColor: UI.css('--ded'), pointRadius: 4 },
+            { label: '세금', data: bur.rows.map((r) => r.taxRate), borderColor: UI.css('--tax'), backgroundColor: UI.css('--tax'), pointRadius: 4 },
+          ],
+        },
+        options: {
+          plugins: { tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y == null ? '자료 없음' : ctx.parsed.y.toFixed(1) + '%'}` } } },
+          scales: { y: { beginAtZero: true, ticks: { callback: (v) => `${v}%` } } },
+        },
+      });
+    }
+    const cc = document.getElementById('c-cum');
+    if (cc) {
+      UI.chart(cc, {
+        type: 'line',
+        data: {
+          labels: cum.series.map((p2) => `${p2.month}월`),
+          datasets: [
+            { label: `${base}년`, data: cum.series.map((p2) => p2.a), borderColor: UI.css('--muted'), backgroundColor: UI.css('--muted'), borderDash: [5, 4], pointRadius: 3, spanGaps: true },
+            { label: `${target}년`, data: cum.series.map((p2) => p2.b), borderColor: UI.css('--net'), backgroundColor: UI.css('--net'), borderWidth: 3, pointRadius: 3, spanGaps: true },
+          ],
+        },
+      });
+    }
+  };
+
   /* ---------- 데이터 관리 ---------- */
   V.data = async () => {
     const recs = await S.all();

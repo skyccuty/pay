@@ -2,7 +2,7 @@
 (function (root) {
   const PS = root.PS;
   const UI = PS.ui;
-  const routes = { home: 'home', upload: 'upload', month: 'month', year: 'year', data: 'data' };
+  const routes = { home: 'home', upload: 'upload', month: 'month', year: 'year', compare: 'compare', data: 'data' };
 
   async function render() {
     const main = document.getElementById('main');
@@ -26,7 +26,7 @@
     UI.$$('.nav a').forEach((a) => {
       if (a.dataset.nav === name) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
     });
-    const titles = { home: '홈', upload: '명세서 올리기', month: '월별 조회', year: '연도별 분석', data: '데이터 관리' };
+    const titles = { home: '홈', upload: '명세서 올리기', month: '월별 조회', year: '연도별 분석', compare: '연도 비교', data: '데이터 관리' };
     document.title = `${titles[name]} · 급여명세 장부`;
     try {
       await PS.views[name](parts.slice(1));
