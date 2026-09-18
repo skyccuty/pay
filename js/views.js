@@ -882,6 +882,97 @@
     }
   };
 
+  /* ---------- 검색 ---------- */
+  const searchState = { q: '' };
+  const hl = (text, terms) => {
+    let html = esc(text);
+    if (!terms.length) return html;
+    // 공백을 무시하고 비교하므로, 표시용으로는 각 글자 사이에 공백이 끼어도 찾도록 처리
+    terms.forEach((t) => {
+      const pat = t.split('').map((ch) => ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s*');
+      try { html = html.replace(new RegExp(`(${pat})`, 'gi'), '<mark>$1</mark>'); } catch (e) { /* 무시 */ }
+    });
+    return html;
+  };
+  V.search = async (params) => {
+    const recs = await S.all();
+    if (params[0] != null && params[0] !== '') {
+      try { searchState.q = decodeURIComponent(params.join('/')); } catch (e) { searchState.q = params.join('/'); }
+    }
+    main().innerHTML = `
+      <div class="page-head"><div><h1>검색</h1><p>항목명, 기본정보, 계산근거에서 찾습니다. 저장된 ${recs.length}개월이 대상입니다.</p></div></div>
+      <div class="stack">
+        <section class="block">
+          <label class="f"><span>검색어 (여러 단어를 띄어 쓰면 모두 포함된 것만 찾습니다)</span>
+            <input class="input" id="q" type="search" inputmode="search" autocomplete="off" placeholder="예: 수당, 연금, 담임" value="${esc(searchState.q)}"></label>
+          <div class="row" style="margin-top:10px">
+            ${['수당', '연금', '보험', '공제회', '담임'].map((w) => `<button type="button" class="chip small-chip" data-w="${w}">${w}</button>`).join('')}
+          </div>
+        </section>
+        <div id="sr"></div>
+      </div>`;
+    const input = document.getElementById('q');
+    const box = document.getElementById('sr');
+    const run = () => {
+      const q = input.value;
+      searchState.q = q;
+      const hash = `#/search${q.trim() ? '/' + encodeURIComponent(q.trim()) : ''}`;
+      if (location.hash !== hash) history.replaceState(null, '', hash);
+      if (!recs.length) { box.innerHTML = '<section class="block empty-state"><h2>저장된 기록이 없습니다</h2><p>명세서를 올리면 검색할 수 있습니다.</p><a class="btn primary" href="#/upload">명세서 올리기</a></section>'; return; }
+      if (!q.trim()) { box.innerHTML = '<p class="muted">검색어를 입력하세요.</p>'; return; }
+      const r = A.search(recs, q);
+      const t = r.terms;
+      if (!r.count) {
+        box.innerHTML = `<section class="block"><p>"${esc(q.trim())}"와(과) 일치하는 항목이 없습니다.</p>
+          <p class="small muted" style="margin-top:6px">항목명 일부만 입력해도 찾을 수 있습니다(예: "공제회"). 띄어쓰기는 무시됩니다.</p></section>`;
+        return;
+      }
+      const groups = [
+        { key: 'payments', label: '급여 항목', cls: 'pay' },
+        { key: 'taxes', label: '세금 항목', cls: 'tax' },
+        { key: 'deductions', label: '공제 항목', cls: 'ded' },
+      ];
+      box.innerHTML = `
+        <p class="small muted">결과 ${r.count}건 · 관련된 달 ${r.monthCount}개월</p>
+        ${groups.map((g) => {
+          const list = r.items[g.key];
+          if (!list.length) return '';
+          return `<section class="block ledger ${g.cls}" style="margin-top:12px">
+            <div class="block-head"><h2>${g.label}</h2><span class="small muted">${list.length}개</span></div>
+            ${list.map((it) => `<details class="sr-item"><summary>
+                <span class="sr-name">${hl(it.name, t)}</span>
+                <span class="sr-sum">${U.fmt(it.total)}<small>${it.count}건${it.missing ? ` · 확인 필요 ${it.missing}` : ''}</small></span>
+              </summary>
+              ${it.years.map((y) => `<div class="sr-year">
+                <div class="sr-year-head"><span>${y.year}년</span><span>${U.fmt(y.sum)}원 · ${y.months.length}건</span></div>
+                <ul class="lines">${y.months.map((m) => `<li class="line"><a class="line-main" href="#/month/${m.year}/${m.month}">
+                  <span class="line-name">${m.year}년 ${m.month}월</span>
+                  <span class="line-amt">${m.amount == null ? '<span class="tag warn">확인 필요</span>' : U.fmt(m.amount)}</span></a></li>`).join('')}</ul>
+              </div>`).join('')}
+            </details>`).join('')}
+          </section>`;
+        }).join('')}
+        ${r.basics.length ? `<section class="block" style="margin-top:12px">
+          <div class="block-head"><h2>기본정보</h2><span class="small muted">${r.basics.length}건</span></div>
+          <ul class="lines">${r.basics.map((b2) => `<li class="line"><div class="line-main">
+            <span class="line-name">${esc(b2.label)}: <strong>${hl(b2.value, t)}</strong></span></div>
+            <p class="sr-months">${b2.months.map((m) => `<a href="#/month/${m.year}/${m.month}">${m.year}년 ${m.month}월</a>`).join(', ')}</p></li>`).join('')}</ul>
+        </section>` : ''}
+        ${r.calcs.length ? `<section class="block" style="margin-top:12px">
+          <div class="block-head"><h2>계산근거</h2><span class="small muted">${r.calcs.length}건</span></div>
+          <ul class="lines">${r.calcs.map((c2) => `<li class="line"><a class="line-main" href="#/month/${c2.year}/${c2.month}">
+              <span class="line-name">${esc(c2.name)}</span><span class="line-amt small">${c2.year}년 ${c2.month}월</span></a>
+            <p class="sr-calc">${c2.lines.map((ln) => hl(ln, t)).join('<br>')}</p></li>`).join('')}</ul>
+        </section>` : ''}`;
+    };
+    let timer = null;
+    input.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(run, 180); });
+    UI.$$('[data-w]').forEach((b2) => b2.onclick = () => { input.value = b2.dataset.w; run(); input.focus(); });
+    run();
+    // 휴대폰에서는 자동으로 키보드가 올라오지 않도록 넓은 화면에서만 커서를 둔다
+    setTimeout(() => { if (input.isConnected && window.innerWidth >= 900) input.focus(); }, 0);
+  };
+
   /* ---------- 데이터 관리 ---------- */
   V.data = async () => {
     const recs = await S.all();

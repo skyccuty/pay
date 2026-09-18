@@ -1,5 +1,5 @@
 /* sw.js — 앱 파일을 기기에 보관해 오프라인에서도 열리게 한다. 급여 데이터는 여기서 다루지 않는다. */
-const VERSION = 'payslip-ledger-v1.2.0';
+const VERSION = 'payslip-ledger-v1.3.0';
 const ASSETS = [
   './', './index.html', './manifest.json', './css/app.css',
   './js/extractors.js', './js/parser.js', './js/data.js', './js/ui-common.js',

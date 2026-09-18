@@ -433,6 +433,78 @@
     return { months, missing, broken, series, total: Object.assign({ a: months.length ? ca : null, b: months.length ? cb : null }, A.delta(months.length ? ca : null, months.length ? cb : null)) };
   };
 
+  /* ---------- 검색 ---------- */
+  const nrm = (v) => String(v == null ? '' : v).toLowerCase().replace(/\s+/g, '');
+  const hitAll = (text, terms) => { const t = nrm(text); return terms.every((q) => t.includes(q)); };
+  A.searchTerms = (query) => String(query || '').trim().split(/\s+/).map(nrm).filter(Boolean);
+  /**
+   * 저장된 모든 기록에서 검색.
+   * 1) 급여·세금·공제 항목명  2) 기본정보(라벨·값)  3) 계산근거 원문(일치한 줄)
+   */
+  A.search = (records, query) => {
+    const terms = A.searchTerms(query);
+    const out = { terms, items: { payments: [], taxes: [], deductions: [] }, basics: [], calcs: [], count: 0, monthCount: 0 };
+    if (!terms.length) return out;
+    const touched = new Set();
+    ['payments', 'taxes', 'deductions'].forEach((g) => {
+      const names = [];
+      records.forEach((r) => (r[g] || []).forEach((it) => {
+        if (it.name && hitAll(it.name, terms) && !names.includes(it.name)) names.push(it.name);
+      }));
+      names.sort((a, b) => a.localeCompare(b, 'ko'));
+      out.items[g] = names.map((name) => {
+        const key = `${g}:${name}`;
+        const months = [];
+        records.forEach((r) => {
+          if (!(r[g] || []).some((i) => i.name === name)) return;
+          months.push({ year: r.year, month: r.month, amount: A.value(r, key) });
+          touched.add(r.id);
+        });
+        const years = [];
+        months.forEach((m) => {
+          let y = years.find((x) => x.year === m.year);
+          if (!y) { y = { year: m.year, months: [], sum: 0, missing: 0 }; years.push(y); }
+          y.months.push(m);
+          if (m.amount == null) y.missing += 1; else y.sum += m.amount;
+        });
+        const total = months.reduce((s, m) => s + (m.amount || 0), 0);
+        return { group: g, name, years, count: months.length, total, missing: months.filter((m) => m.amount == null).length };
+      });
+      out.count += out.items[g].length;
+    });
+    // 기본정보
+    const map = new Map();
+    records.forEach((r) => {
+      const pairs = Object.entries(r.basicInfo || {});
+      if (r.payGrade != null) pairs.push(['호봉', `${r.payGrade}호봉`]);
+      if (r.careerYears != null) pairs.push(['근무년수', `${r.careerYears}년`]);
+      if (r.employmentStatus) pairs.push(['재직상태', r.employmentStatus]);
+      pairs.forEach(([label, value]) => {
+        if (!value || !(hitAll(label + value, terms) || hitAll(value, terms) || hitAll(label, terms))) return;
+        const k = label + '\u0000' + value;
+        if (!map.has(k)) map.set(k, { label, value, months: [] });
+        map.get(k).months.push({ year: r.year, month: r.month });
+        touched.add(r.id);
+      });
+    });
+    out.basics = [...map.values()].sort((a, b) => a.label.localeCompare(b.label, 'ko'));
+    out.count += out.basics.length;
+    // 계산근거 원문
+    records.forEach((r) => {
+      ['payments', 'taxes', 'deductions'].forEach((g) => (r[g] || []).forEach((it) => {
+        if (!it.calc || !it.calc.raw) return;
+        const lines = it.calc.raw.split('\n').filter((ln) => ln.trim() && hitAll(ln, terms));
+        if (!lines.length) return;
+        out.calcs.push({ year: r.year, month: r.month, name: it.name, lines });
+        touched.add(r.id);
+      }));
+    });
+    out.calcs.sort((a, b) => a.year - b.year || a.month - b.month);
+    out.count += out.calcs.length;
+    out.monthCount = touched.size;
+    return out;
+  };
+
   /* ================= backup / restore ================= */
   const B = (PS.backup = {});
   B.FORMAT = 'payslip-ledger-backup';
