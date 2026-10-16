@@ -177,9 +177,8 @@
     container.innerHTML = `
       <div class="pin">
         <p class="pin-label" id="pin-label">${UI.esc(opts.label || 'PIN')}</p>
-        <div class="pin-dots" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+        <div class="pin-dots" role="img" aria-labelledby="pin-label"><span></span><span></span><span></span><span></span></div>
         <p class="pin-msg" role="status" aria-live="polite"></p>
-        <input class="sr" type="password" inputmode="numeric" autocomplete="off" aria-labelledby="pin-label" maxlength="4">
         <div class="pin-keys">
           ${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `<button type="button" class="pin-key" data-k="${n}">${n}</button>`).join('')}
           <span></span><button type="button" class="pin-key" data-k="0">0</button>
@@ -190,7 +189,6 @@
     const msg = UI.$('.pin-msg', container);
     const label = UI.$('.pin-label', container);
     const keys = UI.$$('.pin-key', container);
-    const hidden = UI.$('input', container);
     const paint = () => dots.forEach((d, i) => d.classList.toggle('on', i < val.length));
     const setDisabled = (v) => { disabled = v; keys.forEach((k) => { k.disabled = v; }); };
     const press = (k) => {
@@ -233,7 +231,6 @@
       else if (e.key === 'Backspace') { e.preventDefault(); press('del'); }
     };
     document.addEventListener('keydown', onKey);
-    hidden.addEventListener('input', () => { hidden.value = ''; });
     return api;
   };
 

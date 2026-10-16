@@ -1,7 +1,7 @@
 /* app.js — 화면 전환(해시 라우터)과 PWA 등록 */
 (function (root) {
   const PS = root.PS;
-  PS.APP_VERSION = '1.4.2';
+  PS.APP_VERSION = '1.4.3';
   const UI = PS.ui;
   const routes = { home: 'home', upload: 'upload', month: 'month', year: 'year', compare: 'compare', search: 'search', data: 'data' };
 

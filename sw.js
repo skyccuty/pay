@@ -1,7 +1,7 @@
 /* sw.js — 앱 파일을 기기에 보관해 오프라인에서도 열리게 한다. 급여 데이터는 여기서 다루지 않는다.
  * 화면·기능 파일(html/js/css/json)은 "네트워크 우선"으로 가져와, 새 버전을 올리면 바로 반영된다.
  * 용량이 큰 라이브러리와 아이콘은 "캐시 우선"으로 빠르게 연다. */
-const VERSION = 'payslip-ledger-v1.4.2';
+const VERSION = 'payslip-ledger-v1.4.3';
 const SHELL = [
   './', './index.html', './manifest.json', './css/app.css',
   './js/extractors.js', './js/parser.js', './js/data.js', './js/ui-common.js',
