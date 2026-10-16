@@ -108,7 +108,7 @@
       m.innerHTML = `<section class="block lock-box">
         <h1>PIN 설정</h1>
         <p>이 앱에 저장되는 급여 기록을 보호할 숫자 4자리를 정해 주세요. 앱을 새로 열 때마다 입력합니다.</p>
-        <div class="notice warn" style="margin:12px 0"><strong>PIN을 잊으면 기록을 되살릴 수 없습니다.</strong>
+        <div class="notice warn" style="margin:12px 0"><strong class="nt">PIN을 잊으면 기록을 되살릴 수 없습니다.</strong>
           제작자도 복구할 수 없습니다. 기억하기 쉬우면서 남이 짐작하기 어려운 숫자를 고르세요(생일·1234·0000 피하기).</div>
         <div id="pin-pad"></div></section>`;
       let first = null;
@@ -199,8 +199,36 @@
           ${ys.incomplete ? '<p class="small muted" style="margin-top:10px">합계가 비어 있는 달은 누적에서 빠졌습니다.</p>' : ''}
           <div class="row" style="margin-top:14px"><a class="btn small" href="#/year/${last.year}">${last.year}년 분석 보기</a><a class="btn small" href="#/month/${last.year}/${last.month}">이 달 명세 보기</a></div>
         </section>
+        ${allBlock(recs)}
       </div>`;
   };
+
+  /** 홈: 저장된 모든 기록의 누적 (한 해뿐이면 연도 누적과 같으므로 표시하지 않음) */
+  function allBlock(recs) {
+    const t = A.allSummary(recs);
+    if (t.years < 2) return '';
+    const span = `${UI.ymLabel(t.first.year, t.first.month)} ~ ${UI.ymLabel(t.last.year, t.last.month)}`;
+    return `
+      <section class="block">
+        <div class="block-head"><h2>전체 기간 누적</h2><span class="small muted">${t.years}개 연도 · ${t.months}개월</span></div>
+        <p class="small muted">${span}</p>
+        <div class="split-legend" style="margin-top:12px">
+          <div class="leg pay"><span class="k">급여총액</span><span class="v">${UI.won(t.paymentTotal)}</span></div>
+          <div class="leg tax"><span class="k">세금총액</span><span class="v">${UI.won(t.taxTotal)}</span></div>
+          <div class="leg ded"><span class="k">공제총액</span><span class="v">${UI.won(t.deductionTotal)}</span></div>
+          <div class="leg net"><span class="k">실수령액</span><span class="v">${UI.won(t.netPay)}</span></div>
+        </div>
+        <hr class="rule">
+        <div class="split-legend">
+          <div class="leg pay"><span class="k">월평균 급여</span><span class="v">${UI.won(t.avgPayment)}</span></div>
+          <div class="leg tax"><span class="k">월평균 세금</span><span class="v">${UI.won(t.avgTax)}</span></div>
+          <div class="leg ded"><span class="k">월평균 공제</span><span class="v">${UI.won(t.avgDeduction)}</span></div>
+          <div class="leg net"><span class="k">월평균 실수령액</span><span class="v">${UI.won(t.avgNet)}</span></div>
+        </div>
+        <p class="small muted" style="margin-top:10px">저장된 달만 더한 금액입니다.${t.gaps ? ` 이 기간 중 기록이 없는 달이 ${t.gaps}개월 있습니다.` : ''}${t.incomplete ? ' 합계가 비어 있는 달은 누적에서 빠졌습니다.' : ''}</p>
+        <div class="row" style="margin-top:14px"><a class="btn small" href="#/compare">연도 비교 보기</a></div>
+      </section>`;
+  }
 
   /* ---------- 업로드 ---------- */
   const upState = { queue: [], current: null, editor: null };
@@ -333,7 +361,7 @@
     else {
       upState.current = null;
       const box = document.getElementById('review');
-      box.innerHTML = `<div class="notice ok"><strong>저장을 마쳤습니다.</strong>
+      box.innerHTML = `<div class="notice ok"><strong class="nt">저장을 마쳤습니다.</strong>
         <div class="row" style="margin-top:8px"><a class="btn small primary" href="#/month/${record.year}/${record.month}">${UI.ymLabel(record.year, record.month)} 명세 보기</a>
         <button class="btn small" type="button" id="up-more">다른 파일 올리기</button></div></div>`;
       box.querySelector('#up-more').onclick = () => document.getElementById('file').click();
@@ -678,7 +706,7 @@
   };
 
   /* ---------- 연도 비교 ---------- */
-  const cmpState = { basis: 'same', base: null, target: null, monthKey: 'total:netPay', cumField: 'netPay', upto: null };
+  const cmpState = { basis: 'same', base: null, target: null, monthKey: 'total:netPay', monthMode: 'overlay', cumField: 'netPay', upto: null, topAll: false };
   const pct = (v) => (v == null ? '—' : `${v > 0 ? '+' : ''}${v.toFixed(1)}%`);
   const signed = (v) => (v == null ? '—' : `${v > 0 ? '▲ ' : v < 0 ? '▼ ' : ''}${U.fmt(Math.abs(v))}`);
   const dcls = (v) => (v == null || v === 0 ? 'd-zero' : v > 0 ? 'd-up' : 'd-down');
@@ -707,6 +735,11 @@
     const tMonths = A.monthsOf(recs, target);
     if (!cmpState.upto || cmpState.upto > 12) cmpState.upto = tMonths[tMonths.length - 1] || 12;
     const cum = A.cumulative(recs, base, target, cmpState.upto, cmpState.cumField);
+    const bd = A.breakdown(c);
+    const contrib = A.contributions(c);
+    const asOf = c.basis === 'same'
+      ? (c.common.length ? `${target}년 ${c.common[c.common.length - 1]}월까지` : '비교 가능한 달 없음')
+      : `${target}년 ${c.monthsTarget.length ? c.monthsTarget[c.monthsTarget.length - 1] : '-'}월까지 저장됨`;
     const basisNote = basis === 'same'
       ? `두 해 모두 기록이 있는 달만 비교합니다. 비교한 달: <strong>${monthList(c.common)}</strong>`
       : `각 해에 저장된 모든 달을 합산합니다. ${base}년 ${c.monthsBase.length}개월 · ${target}년 ${c.monthsTarget.length}개월`;
@@ -725,9 +758,51 @@
             <label class="f"><span>비교 연도</span><select class="input" id="cmp-base">${yOpt(base, target)}</select></label>
           </div>
           <p class="small" style="margin-top:10px">${basisNote}</p>
+          <p class="small muted">기준 시점: ${esc(asOf)}. 연도가 다 차기 전에는 수치가 계속 바뀝니다.</p>
           ${c.mismatch ? `<div class="notice warn" style="margin-top:10px">⚠ 두 해의 기록 개월 수(또는 달)가 달라 연간 합계를 그대로 비교하기 어렵습니다. 공정한 비교는 <strong>같은 달끼리</strong> 기준을 보세요.</div>` : ''}
           ${c.empty ? `<div class="notice warn" style="margin-top:10px">⚠ ${basis === 'same' ? `${base}년과 ${target}년에 함께 기록된 달이 없어 비교할 수 없습니다.` : '비교할 기록이 없습니다.'}</div>` : ''}
         </section>
+
+        ${c.empty ? '' : `<section class="block cmp-headline">
+          <div class="block-head"><h2>한눈에 보기</h2><span class="small muted">${base}년 → ${target}년</span></div>
+          ${c.mismatch ? '<div class="notice warn" style="margin-bottom:10px">⚠ 두 해의 기록 개월 수가 달라, 아래 수치는 그대로 비교하기 어렵습니다. <strong>같은 달끼리</strong> 기준으로 보세요.</div>' : ''}
+          <p class="headline">${bd.net == null ? '실수령액을 비교할 수 없습니다.' :
+            `실수령액이 <strong class="${dcls(bd.net)}">${bd.net === 0 ? '변화 없음' : `${bd.net > 0 ? '늘었습니다' : '줄었습니다'} ${U.fmt(Math.abs(bd.net))}원`}</strong>${c.rows.find((r) => r.key === 'netPay').pct == null ? '' : ` (${pct(c.rows.find((r) => r.key === 'netPay').pct)})`}`}</p>
+          <div class="waterfall">
+            ${(() => {
+              const vals = bd.bars.map((x) => Math.abs(x.value || 0));
+              const max = Math.max(1, ...vals);
+              return bd.bars.map((x) => `<div class="wf-row ${x.total ? 'total' : ''}">
+                <span class="wf-label">${x.label}</span>
+                <span class="wf-track"><span class="wf-bar wf-${x.cls} ${(x.value || 0) < 0 ? 'neg' : 'pos'}" style="width:${((Math.abs(x.value || 0) / max) * 50).toFixed(1)}%"></span></span>
+                <span class="wf-val ${dcls(x.value)}">${signed(x.value)}</span></div>`).join('');
+            })()}
+          </div>
+          <p class="chart-note">가운데 선이 0입니다. 세금·공제는 <strong>실수령에 준 영향</strong>으로 바꿔 표시했습니다(세금이 늘면 왼쪽). 급여 증감 − 세금 − 공제 = 실수령 증감.${bd.consistent ? '' : ' 일부 합계가 비어 있어 네 값이 정확히 맞아떨어지지 않을 수 있습니다.'}</p>
+        </section>
+
+        <section class="block">
+          <div class="block-head"><h2>무엇이 달라졌나</h2><span class="small muted">실수령 기준 영향</span></div>
+          ${contrib.rows.length ? `
+          <div class="contrib">
+            ${(() => {
+              const list = cmpState.topAll ? contrib.rows : contrib.rows.slice(0, 8);
+              const max = Math.max(1, ...contrib.rows.map((r) => Math.abs(r.impact)));
+              return list.map((r) => {
+                const w = ((Math.abs(r.impact) / max) * 50).toFixed(1);
+                const neg = r.impact < 0;
+                return `<div class="cb-row">
+                  <span class="cb-name">${esc(r.name)}<small>${A.GROUP_LABEL[r.group]} ${r.diff > 0 ? '늘어남' : '줄어듦'} ${U.fmt(Math.abs(r.diff))}${r.isNew ? ' · 신규' : ''}${r.isGone ? ' · 없어짐' : ''}</small></span>
+                  <span class="cb-track"><span class="cb-bar ${neg ? 'neg' : 'pos'} cb-${{ payments: 'pay', taxes: 'tax', deductions: 'ded' }[r.group]}" style="width:${w}%"></span></span>
+                  <span class="cb-val ${dcls(r.impact)}">${signed(r.impact)}</span></div>`;
+              }).join('');
+            })()}
+          </div>
+          ${contrib.rows.length > 8 ? `<div class="row" style="margin-top:10px"><button type="button" class="btn small" id="contrib-toggle">${cmpState.topAll ? '상위 8개만 보기' : `나머지 ${contrib.rows.length - 8}개 더 보기`}</button></div>` : ''}
+          <p class="chart-note">막대가 오른쪽이면 실수령을 늘린 요인, 왼쪽이면 줄인 요인입니다. 공제·세금은 늘어난 만큼 왼쪽으로 갑니다.
+            ${contrib.residual ? ` 항목으로 설명되지 않는 차이가 ${U.fmt(Math.abs(contrib.residual))}원 남습니다(세부항목 합계와 총액이 다른 달이 있는 경우).` : ''}</p>`
+          : '<p class="muted">두 해 사이에 금액이 달라진 항목이 없습니다.</p>'}
+        </section>`}
 
         <section class="block">
           <div class="block-head"><h2>연도 간 증감</h2><span class="small muted">${base}년 → ${target}년</span></div>
@@ -758,10 +833,15 @@
         </section>
 
         <section class="block">
-          <div class="block-head"><h2>같은 달 연도 비교</h2></div>
+          <div class="block-head"><h2>같은 달 연도 비교</h2>
+            <div class="seg small-seg" role="group" aria-label="보기 방식">
+              <button type="button" class="seg-btn" data-mmode="overlay" aria-pressed="${cmpState.monthMode === 'overlay'}">연도 겹쳐 보기</button>
+              <button type="button" class="seg-btn" data-mmode="delta" aria-pressed="${cmpState.monthMode === 'delta'}">증감만 보기</button>
+            </div>
+          </div>
           <label class="f"><span>볼 항목</span><select class="input" id="cmp-month-metric"></select></label>
-          <div class="chart-box" style="margin-top:12px"><canvas id="c-samemonth" role="img" aria-label="월별로 연도를 겹쳐 비교한 그래프"></canvas></div>
-          <p class="chart-note">연도마다 선 하나입니다. 끊긴 곳은 명세서가 없거나 그 달에 해당 항목이 없는 달입니다. 최근 5개 연도까지 표시합니다.</p>
+          <div class="chart-box" style="margin-top:12px"><canvas id="c-samemonth" role="img" aria-label="월별로 연도를 비교한 그래프"></canvas></div>
+          <p class="chart-note" id="mm-note"></p>
         </section>
 
         <section class="block">
@@ -811,7 +891,10 @@
           </div>
           <p class="small" style="margin-top:10px">누적에 넣은 달: <strong>${monthList(cum.months)}</strong>${cum.missing.length ? ` · 한쪽이라도 기록이 없어 뺀 달: ${monthList(cum.missing)}` : ''}</p>
           ${cum.broken ? '<p class="small" style="color:var(--warn)">⚠ 합계가 비어 있는 달이 있어 그 달은 0으로 더했습니다. 해당 달 기록을 확인해 주세요.</p>' : ''}
-          ${cum.months.length ? '<div class="chart-box" style="margin-top:12px"><canvas id="c-cum" role="img" aria-label="같은 기간 누적 비교 그래프"></canvas></div>' : '<div class="notice warn" style="margin-top:10px">⚠ 이 기간에 두 해 모두 기록된 달이 없습니다.</div>'}
+          ${cum.months.length ? `<div class="chart-box" style="margin-top:12px"><canvas id="c-cum" role="img" aria-label="같은 기간 누적 비교 그래프"></canvas></div>
+            <h3 style="margin:18px 0 6px">누적 차이 추이</h3>
+            <div class="chart-box"><canvas id="c-cumdiff" role="img" aria-label="누적 차이 추이 그래프"></canvas></div>
+            <p class="chart-note">0선 위는 ${target}년이 앞선 상태, 아래는 뒤진 상태입니다. 달이 지날수록 격차가 어떻게 벌어졌는지 볼 수 있습니다.</p>` : '<div class="notice warn" style="margin-top:10px">⚠ 이 기간에 두 해 모두 기록된 달이 없습니다.</div>'}
         </section>
       </div>`;
 
@@ -820,6 +903,9 @@
     document.getElementById('cmp-base').onchange = (e) => { cmpState.base = Number(e.target.value); V.compare([]); };
     document.getElementById('cum-field').onchange = (e) => { cmpState.cumField = e.target.value; V.compare([]); };
     document.getElementById('cum-upto').onchange = (e) => { cmpState.upto = Number(e.target.value); V.compare([]); };
+    const ct = document.getElementById('contrib-toggle');
+    if (ct) ct.onclick = () => { cmpState.topAll = !cmpState.topAll; V.compare([]); };
+    UI.$$('[data-mmode]').forEach((b2) => b2.onclick = () => { cmpState.monthMode = b2.dataset.mmode; drawSame(); UI.$$('[data-mmode]').forEach((x) => x.setAttribute('aria-pressed', String(x.dataset.mmode === cmpState.monthMode))); });
 
     const palette = [UI.css('--net'), UI.css('--pay'), UI.css('--tax'), UI.css('--ded'), UI.css('--muted')];
     const recentYears = years.slice(-5).reverse();
@@ -830,10 +916,32 @@
     Object.keys(cat).forEach((g) => cat[g].forEach((n) => keys.add(`${g}:${n}`)));
     if (!keys.has(cmpState.monthKey)) cmpState.monthKey = 'total:netPay';
     sel.innerHTML = UI.metricOptions(recs, cmpState.monthKey);
-    const drawSame = () => {
+    function drawSame() {
       cmpState.monthKey = sel.value;
       const byId = new Map(recs.map((r) => [r.id, r]));
-      UI.chart(document.getElementById('c-samemonth'), {
+      const note = document.getElementById('mm-note');
+      const canvas = document.getElementById('c-samemonth');
+      if (!canvas) return;
+      if (cmpState.monthMode === 'delta') {
+        const d = A.monthDeltas(recs, base, target, sel.value);
+        const have = d.filter((x) => x.diff != null).length;
+        UI.chart(canvas, {
+          type: 'bar',
+          data: {
+            labels: monthLabels,
+            datasets: [{
+              label: `${target}년 − ${base}년`,
+              data: d.map((x) => x.diff),
+              backgroundColor: d.map((x) => (x.diff == null ? 'transparent' : x.diff >= 0 ? UI.css('--net') : UI.css('--ded'))),
+              borderRadius: 3,
+            }],
+          },
+          options: { plugins: { legend: { display: false } }, scales: { y: { grid: { color: UI.css('--line') } } } },
+        });
+        if (note) note.textContent = `0선 위는 ${target}년이 많았던 달, 아래는 적었던 달입니다. 두 해 모두 기록이 있는 ${have}개 달만 막대가 나옵니다.`;
+        return;
+      }
+      UI.chart(canvas, {
         type: 'line',
         data: {
           labels: monthLabels,
@@ -841,11 +949,15 @@
             label: `${y}년`,
             data: monthLabels.map((_, m) => A.value(byId.get(U.ym(y, m + 1)), sel.value)),
             borderColor: palette[i], backgroundColor: palette[i],
-            borderWidth: i === 0 ? 3 : 2, borderDash: i === 0 ? [] : [5, 4], pointRadius: 4, spanGaps: false, tension: 0,
+            borderWidth: i === 0 ? 3 : 2, borderDash: i === 0 ? [] : [5, 4],
+            pointRadius: i === 0 ? 4 : 3, spanGaps: false, tension: 0,
           })),
         },
+        // 축을 0에서 시작시켜 작은 차이가 크게 보이지 않도록 한다
+        options: { scales: { y: { beginAtZero: true } } },
       });
-    };
+      if (note) note.textContent = '연도마다 선 하나이며, 가장 최근 연도를 굵게 표시합니다. 끊긴 곳은 명세서가 없거나 그 달에 해당 항목이 없는 달입니다. 최근 5개 연도까지, 세로축은 0부터 표시합니다.';
+    }
     sel.onchange = drawSame;
     drawSame();
 
@@ -878,6 +990,24 @@
             { label: `${target}년`, data: cum.series.map((p2) => p2.b), borderColor: UI.css('--net'), backgroundColor: UI.css('--net'), borderWidth: 3, pointRadius: 3, spanGaps: true },
           ],
         },
+        options: { scales: { y: { beginAtZero: true } } },
+      });
+    }
+    const cd = document.getElementById('c-cumdiff');
+    if (cd) {
+      const diffs = cum.series.map((p2) => (p2.a == null || p2.b == null ? null : p2.b - p2.a));
+      UI.chart(cd, {
+        type: 'bar',
+        data: {
+          labels: cum.series.map((p2) => `${p2.month}월`),
+          datasets: [{
+            label: `${target}년 − ${base}년 (누적)`,
+            data: diffs,
+            backgroundColor: diffs.map((v) => (v == null ? 'transparent' : v >= 0 ? UI.css('--net') : UI.css('--ded'))),
+            borderRadius: 3,
+          }],
+        },
+        options: { plugins: { legend: { display: false } } },
       });
     }
   };
@@ -986,13 +1116,37 @@
     let persisted = null;
     try { if (navigator.storage && navigator.storage.persisted) persisted = await navigator.storage.persisted(); } catch (e) { /* 무시 */ }
     const years = A.years(recs);
+    const hist = (await PS.history.get()) || {};
+    const when = (iso) => {
+      if (!iso) return '';
+      const d = new Date(iso);
+      if (isNaN(d)) return esc(String(iso).slice(0, 16).replace('T', ' '));
+      const p2 = (n) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}.${p2(d.getMonth() + 1)}.${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}`;
+    };
+    const MODE_LABEL = { keep: '기존 데이터 유지', merge: '데이터 병합', overwrite: '기존 데이터 덮어쓰기' };
     main().innerHTML = `
       <div class="page-head"><div><h1>데이터 관리</h1><p>기록 ${recs.length}건 · 이 브라우저 안에만 저장되어 있습니다.</p></div></div>
       <div class="stack">
         <section class="block">
+          <div class="block-head"><h2>현재 데이터 이력</h2></div>
+          <dl class="hist">
+            <dt>마지막 백업</dt>
+            <dd>${hist.lastBackup
+              ? `<strong>${esc(hist.lastBackup.fileName || '파일명 기록 없음')}</strong><span class="small muted">${when(hist.lastBackup.at)}${hist.lastBackup.count != null ? ` · 기록 ${hist.lastBackup.count}건` : ''}</span>`
+              : '<span class="muted">기록 없음</span>'}</dd>
+            <dt>마지막 복원</dt>
+            <dd>${hist.lastRestore
+              ? `<strong>${esc(hist.lastRestore.fileName || '파일명 기록 없음')}</strong><span class="small muted">${when(hist.lastRestore.at)} · ${esc(MODE_LABEL[hist.lastRestore.mode] || hist.lastRestore.mode || '')}${hist.lastRestore.applied != null ? ` · 반영 ${hist.lastRestore.applied}건` : ''}${hist.lastRestore.exportedAt ? ` · 백업 생성 ${when(hist.lastRestore.exportedAt)}` : ''}</span>`
+              : '<span class="muted">기록 없음</span>'}</dd>
+          </dl>
+          ${!hist.lastBackup && !hist.lastRestore ? '<p class="small muted" style="margin-top:8px">이 기능이 추가되기 전에 백업·복원한 내역은 남아 있지 않습니다. 다음 백업부터 기록됩니다.</p>' : ''}
+          ${hist.lastBackup && recs.length && hist.lastBackup.count !== recs.length ? `<p class="small" style="margin-top:8px;color:var(--warn)">⚠ 마지막 백업 이후 기록이 바뀌었습니다(백업 ${hist.lastBackup.count}건 · 현재 ${recs.length}건). 새로 백업해 두세요.</p>` : ''}
+        </section>
+        <section class="block">
           <div class="block-head"><h2>백업</h2></div>
           <p>모든 기록을 암호화된 파일 하나로 내려받습니다. 다른 기기나 브라우저로 옮길 때, 브라우저 데이터를 지우기 전에 사용하세요.</p>
-          <div class="notice warn" style="margin-top:10px"><strong>⚠ 이 백업 파일은 앱 PIN(숫자 4자리)으로만 보호됩니다.</strong>
+          <div class="notice warn" style="margin-top:10px"><strong class="nt">⚠ 이 백업 파일은 앱 PIN(숫자 4자리)으로만 보호됩니다.</strong>
             파일이 다른 사람 손에 들어가면 PIN을 짧은 시간에 알아낼 수 있습니다. 메신저·메일로 보내지 말고, 본인만 쓰는 PC나 비공개 저장공간에만 보관하세요.
             복원할 때는 <strong>백업을 만든 시점의 PIN</strong>이 필요합니다.</div>
           <div class="row" style="margin-top:12px"><button type="button" class="btn primary" id="bk" ${recs.length ? '' : 'disabled'}>백업 파일 내려받기</button></div>
@@ -1032,7 +1186,9 @@
           </ul>
           <p class="small muted" style="margin-top:10px">${esc(est)}${persisted === true ? ' · 자동 삭제 방지 켜짐' : ''}</p>
           ${persisted === false ? '<div class="row" style="margin-top:10px"><button type="button" class="btn small" id="persist">브라우저 자동 삭제 방지 요청</button></div>' : ''}
-          <p class="small muted" style="margin-top:10px">파서 버전 ${esc(PS.PARSER_VERSION)}</p>
+          <p class="small muted" style="margin-top:10px">앱 버전 ${esc(PS.APP_VERSION || '-')} · 파서 버전 ${esc(PS.PARSER_VERSION)}</p>
+          <div class="row" style="margin-top:8px"><button type="button" class="btn small" id="chk-update">업데이트 확인</button></div>
+          <p class="small muted" style="margin-top:8px">새 버전을 올린 뒤 화면이 그대로일 때 누르세요. 저장된 기록은 지워지지 않습니다.</p>
         </section>
       </div>`;
 
@@ -1043,8 +1199,22 @@
       try { data = await PS.backup.make(); } finally { bk.disabled = false; }
       const d = new Date();
       const stamp = `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
-      UI.download(`급여명세장부_백업_${stamp}.json`, JSON.stringify(data));
+      const fileName = `급여명세장부_백업_${stamp}.json`;
+      UI.download(fileName, JSON.stringify(data));
+      try { await PS.history.recordBackup({ fileName, count: data.count, exportedAt: data.exportedAt }); } catch (e) { /* 이력 저장 실패는 백업 자체에 영향 없음 */ }
       UI.toast(`백업 파일을 만들었습니다 (${data.count}건)`);
+      V.data();
+    };
+    const cu = document.getElementById('chk-update');
+    if (cu) cu.onclick = async () => {
+      cu.disabled = true; cu.textContent = '확인 중…';
+      let r;
+      try { r = await PS.checkUpdate(); } catch (e) { r = 'error'; }
+      cu.disabled = false; cu.textContent = '업데이트 확인';
+      if (r === 'updating') UI.toast('새 버전을 적용합니다. 화면이 다시 열리면 PIN을 입력해 주세요');
+      else if (r === 'latest') UI.toast('이미 최신 버전입니다');
+      else if (r === 'none' || r === 'unsupported') UI.toast('이 환경에서는 자동 확인을 쓸 수 없습니다. 새로고침해 주세요');
+      else UI.toast('확인하지 못했습니다. 인터넷 연결을 확인해 주세요');
     };
     document.getElementById('lock-now').onclick = () => { PS.lock.lock(); location.hash = '#/home'; PS.app.render(); };
     document.getElementById('pin-change').onclick = () => UI.pinChange();
@@ -1071,7 +1241,9 @@
         ],
       });
       if (!ok) return;
-      await S.clear(); UI.toast('모든 기록을 삭제했습니다'); V.data();
+      await S.clear();
+      try { await PS.history.clear(); } catch (e) { /* 무시 */ }
+      UI.toast('모든 기록을 삭제했습니다'); V.data();
     };
     document.getElementById('rs').onchange = async (e) => {
       const f = e.target.files[0];
@@ -1115,8 +1287,16 @@
       planBox.querySelector('#rs-go').onclick = async () => {
         const mode = planBox.querySelector('input[name="rmode"]:checked').value;
         if (mode === 'overwrite' && !(await UI.confirm('기존 기록을 모두 덮어쓸까요?', `현재 기록 ${recs.length}건이 지워집니다.`, '덮어쓰기', true))) return;
-        try { await PS.backup.apply(planBox._plan); }
+        const plan = planBox._plan;
+        try { await PS.backup.apply(plan); }
         catch (err) { planBox.insertAdjacentHTML('beforeend', `<div class="notice err">${esc(err.message)}</div>`); return; }
+        try {
+          await PS.history.recordRestore({
+            fileName: f.name, mode, count: incoming.length,
+            applied: plan.add.length + plan.replace.length,
+            exportedAt: obj && obj.exportedAt ? obj.exportedAt : null,
+          });
+        } catch (e) { /* 이력 저장 실패는 복원 자체에 영향 없음 */ }
         UI.toast('복원을 마쳤습니다');
         V.data();
       };

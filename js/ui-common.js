@@ -292,7 +292,7 @@
     let html = '';
     if (list.length) {
       const err = list.some((i) => i.level === 'error');
-      html += `<div class="notice ${err ? 'err' : 'warn'}" role="alert"><strong>⚠ ${UI.esc(title || '확인 필요')}</strong><ul>${list.map((i) => `<li>${UI.esc(i.message)}</li>`).join('')}</ul></div>`;
+      html += `<div class="notice ${err ? 'err' : 'warn'}" role="alert"><strong class="nt">⚠ ${UI.esc(title || '확인 필요')}</strong><ul>${list.map((i) => `<li>${UI.esc(i.message)}</li>`).join('')}</ul></div>`;
     }
     if (info.length) html += `<div class="notice info small"><ul>${info.map((i) => `<li>${UI.esc(i.message)}</li>`).join('')}</ul></div>`;
     return html;

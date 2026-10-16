@@ -114,7 +114,7 @@
     await tx([META], 'readwrite', (st) => { st(META).put({ id: 'attempts', fails: 0, until: 0 }); });
     return { ok: true };
   };
-  L.lock = () => { KEY = null; cache = null; };
+  L.lock = () => { KEY = null; cache = null; if (PS.history) PS.history._reset(); };
   /** 최초 설정: 기존 평문 기록(v1.0)이 있으면 암호화해서 옮긴다 */
   L.setup = async (pin) => {
     if (!L.PIN_RE.test(pin)) throw new Error('PIN은 숫자 4자리여야 합니다.');
@@ -152,7 +152,7 @@
   /** PIN 분실 시: 모든 기록과 PIN 설정 삭제 */
   L.resetAll = async () => {
     await tx([STORE, META], 'readwrite', (st) => { st(STORE).clear(); st(META).clear(); });
-    lockMeta = null; KEY = null; cache = null;
+    lockMeta = null; KEY = null; cache = null; if (PS.history) PS.history._reset();
   };
   L.exportKeyInfo = async () => { const m = await L.meta(); return { salt: m.salt, iter: m.iter }; };
   const needKey = () => { if (!KEY) { const e = new Error('앱이 잠겨 있습니다.'); e.code = 'LOCKED'; throw e; } return KEY; };
@@ -383,6 +383,85 @@
     });
     return out;
   };
+  /** 저장된 모든 기록의 누적 */
+  A.allSummary = (records) => {
+    const list = records.slice().sort((a, b) => a.year - b.year || a.month - b.month);
+    const s = {
+      months: list.length,
+      years: A.years(records).length,
+      first: list[0] || null, last: list[list.length - 1] || null,
+      paymentTotal: sumOf(list, 'paymentTotal'), taxTotal: sumOf(list, 'taxTotal'),
+      deductionTotal: sumOf(list, 'deductionTotal'), netPay: sumOf(list, 'netPay'),
+    };
+    const avg = (f) => {
+      const vals = list.map((r) => r[f]).filter((v) => v != null);
+      return vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : null;
+    };
+    s.avgPayment = avg('paymentTotal');
+    s.avgTax = avg('taxTotal');
+    s.avgDeduction = avg('deductionTotal');
+    s.avgNet = avg('netPay');
+    s.incomplete = list.some((r) => FIELDS.some((f) => r[f] == null));
+    // 저장된 기간 안에서 기록이 없는 달 수
+    if (s.first && s.last) {
+      const span = (s.last.year * 12 + s.last.month) - (s.first.year * 12 + s.first.month) + 1;
+      s.span = span;
+      s.gaps = span - list.length;
+    }
+    return s;
+  };
+
+  /**
+   * 실수령액 증감을 항목 단위로 분해한다.
+   * 급여항목이 늘면 실수령에 +, 세금·공제가 늘면 실수령에 −로 본다(impact).
+   */
+  A.contributions = (cmp) => {
+    const rows = [];
+    ['payments', 'taxes', 'deductions'].forEach((g) => {
+      (cmp.items[g] || []).forEach((it) => {
+        const a = it.inA ? (it.a || 0) : 0;
+        const b = it.inB ? (it.b || 0) : 0;
+        const diff = b - a;
+        if (!diff) return;
+        rows.push({ group: g, name: it.name, a: it.inA ? it.a : null, b: it.inB ? it.b : null,
+          diff, impact: g === 'payments' ? diff : -diff, isNew: !it.inA, isGone: !it.inB });
+      });
+    });
+    rows.sort((x, y) => Math.abs(y.impact) - Math.abs(x.impact));
+    const netRow = cmp.rows.find((r) => r.key === 'netPay');
+    const netDiff = netRow ? netRow.diff : null;
+    const explained = rows.reduce((s, r) => s + r.impact, 0);
+    return { rows, netDiff, explained, residual: netDiff == null ? null : netDiff - explained };
+  };
+
+  /** 실수령 증감이 급여·세금·공제 어느 쪽에서 왔는지 */
+  A.breakdown = (cmp) => {
+    const get = (k) => { const r = cmp.rows.find((x) => x.key === k); return r ? r.diff : null; };
+    const pay = get('paymentTotal'), tax = get('taxTotal'), ded = get('deductionTotal'), net = get('netPay');
+    return {
+      pay, tax, ded, net,
+      bars: [
+        { label: '급여총액 증감', value: pay, cls: 'pay' },
+        { label: '세금 영향', value: tax == null ? null : -tax, cls: 'tax' },
+        { label: '공제 영향', value: ded == null ? null : -ded, cls: 'ded' },
+        { label: '실수령액 증감', value: net, cls: 'net', total: true },
+      ],
+      consistent: [pay, tax, ded, net].every((v) => v != null) && pay - tax - ded === net,
+    };
+  };
+
+  /** 월별 증감: 두 해 모두 기록이 있는 달만 (b - a) */
+  A.monthDeltas = (records, base, target, key) => {
+    const byId = new Map(records.map((r) => [r.id, r]));
+    const out = [];
+    for (let m = 1; m <= 12; m++) {
+      const ra = byId.get(U.ym(base, m)), rb = byId.get(U.ym(target, m));
+      const va = ra ? A.value(ra, key) : null, vb = rb ? A.value(rb, key) : null;
+      out.push({ month: m, a: va, b: vb, diff: va == null || vb == null ? null : vb - va });
+    }
+    return out;
+  };
+
   /** 연속 연도(직전 기록 연도) 대비 개요 */
   A.yearOverview = (records, basis) => {
     const ys = A.years(records);
@@ -504,6 +583,30 @@
     out.monthCount = touched.size;
     return out;
   };
+
+  /* ================= 백업·복원 이력 ================= */
+  const H = (PS.history = {});
+  let histCache;
+  H.get = async () => {
+    if (!KEY) return null;
+    if (histCache !== undefined) return histCache;
+    const box = await getOne(META, 'history');
+    if (!box || !box.ct) { histCache = null; return null; }
+    try { histCache = await C.decrypt(KEY, box); } catch (e) { histCache = null; }
+    return histCache;
+  };
+  const putHistory = async (patch) => {
+    const cur = (await H.get()) || {};
+    const next = Object.assign({}, cur, patch);
+    const box = await C.encrypt(needKey(), next);
+    await tx([META], 'readwrite', (st) => { st(META).put(Object.assign({ id: 'history' }, box)); });
+    histCache = next;
+    return next;
+  };
+  H.recordBackup = (info) => putHistory({ lastBackup: Object.assign({ at: new Date().toISOString() }, info) });
+  H.recordRestore = (info) => putHistory({ lastRestore: Object.assign({ at: new Date().toISOString() }, info) });
+  H._reset = () => { histCache = undefined; };
+  H.clear = async () => { histCache = null; await tx([META], 'readwrite', (st) => { st(META).delete('history'); }); };
 
   /* ================= backup / restore ================= */
   const B = (PS.backup = {});

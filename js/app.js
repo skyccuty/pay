@@ -1,6 +1,7 @@
 /* app.js — 화면 전환(해시 라우터)과 PWA 등록 */
 (function (root) {
   const PS = root.PS;
+  PS.APP_VERSION = '1.4.2';
   const UI = PS.ui;
   const routes = { home: 'home', upload: 'upload', month: 'month', year: 'year', compare: 'compare', search: 'search', data: 'data' };
 
@@ -50,7 +51,33 @@
 
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('sw.js').catch((e) => console.warn('오프라인 기능 등록 실패', e));
+      navigator.serviceWorker.register('sw.js')
+        .then((reg) => { PS.swReg = reg; reg.update().catch(() => {}); })
+        .catch((e) => console.warn('오프라인 기능 등록 실패', e));
+    });
+    // 화면을 다시 불러오는 것은 '업데이트 확인' 버튼을 눌렀을 때만 한다.
+    // (처음 방문하거나 새 버전이 뒤에서 설치될 때 저절로 새로고침하면 PIN 입력·수정 중인 내용이 끊긴다)
+    let reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!updateRequested || reloaded) return;
+      reloaded = true; location.reload();
     });
   }
+  let updateRequested = false;
+
+  /** 서버에 새 버전이 있는지 확인하고, 있으면 적용한 뒤 화면을 다시 불러온다 */
+  PS.checkUpdate = async () => {
+    if (!('serviceWorker' in navigator)) return 'unsupported';
+    const reg = PS.swReg || await navigator.serviceWorker.getRegistration();
+    if (!reg) return 'none';
+    updateRequested = true;
+    try { await reg.update(); } catch (e) { updateRequested = false; throw e; }
+    const nw = reg.installing || reg.waiting;
+    if (!nw) { updateRequested = false; return 'latest'; }
+    const activate = () => nw.postMessage('SKIP_WAITING');
+    if (nw.state === 'installed') activate();
+    else nw.addEventListener('statechange', () => { if (nw.state === 'installed') activate(); });
+    setTimeout(() => { updateRequested = false; }, 20000);
+    return 'updating';
+  };
 })(window);
